@@ -7,7 +7,8 @@ let config = {
     aqicn_api: "cb29e25829fe8bbd1db28308019698a20573de6f", //从http://aqicn.org/data-platform/token/#/ 上申请key填入即可
     huweather_apiKey: "21c04c8f382f4c97a21ea863a769f6b1", //和风天气APIkey,可自行前往 https://dev.heweather.com/ 进行获取(注意key类型选WebApi)
     // lat_lon: "22.269159,113.553042", //珠海,请填写经纬度,直接从谷歌地图中获取即可
-    lat_lon: "23.106652,113.324893", //广州天河珠江新城
+    // lat_lon: "23.106652,113.324893", //广州天河珠江新城
+    lat_lon: "23.053809,113.312804", //广州之窗商务港
     lang: "zh", //语言,随意切换为您想要的语言哦(zh/zh-tw/ja/en/fr/...)
     log: 0, //调试日志,0为不开启,1为开启,2为开启精简日志
     timeout: 0, //超时时间,单位毫秒(1000毫秒=1秒),一般不推荐修改[为0则不限制超时时间]
