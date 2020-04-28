@@ -18,7 +18,11 @@ Surge 4.0 :
 dianshijia.js = type=cron,cronexp=35 5 0 * * *,script-path=https://raw.githubusercontent.com/Sunert/Scripts/master/Task/dianshijia.js,script-update-interval=0
 
 # 获取电视家 Cookie.
-dianshijia.js = script-path=https://raw.githubusercontent.com/Sunert/Scripts/master/Task/dianshijia.js,type=http-request,pattern=http:\/\/act\.gaoqingdianshi\.com\/\/api\/v4\/sign\/signin\?
+Surge 4.0
+[Script]
+电视家 = type=cron,cronexp=0 8 0 * * *,script-path=https://raw.githubusercontent.com/Sunert/Scripts/master/Task/dianshijia.js,script-update-interval=0
+
+电视家 = type=http-request,pattern=http:\/\/act\.gaoqingdianshi\.com\/\/api\/v4\/sign\/signin\?,script-path=https://raw.githubusercontent.com/Sunert/Scripts/master/Task/dianshijia.js
 
 ~~~~~~~~~~~~~~~~
 
@@ -111,7 +115,7 @@ function total() {
       {
       sy.log(`${cookieName}, data: ${data}`)
       const result = JSON.parse(data)
-      subTitle = `待兑换金币: 💰${result.data.coin}    `    
+      subTitle = `待兑换: ${result.data.coin}金币   `    
    try{
       for(tempCoin in data){
        for (i=0;i<result.data.tempCoin.length;i++) {  
@@ -135,7 +139,7 @@ function cash() {
       {
       sy.log(`data: ${data}`)
       const result = JSON.parse(data)
-      subTitle += '现金收益: 💶'+ result.data.amount/100+'元 '
+      subTitle += '现金: '+ result.data.amount/100+'元 '
       resolve()
       })
    })

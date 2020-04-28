@@ -1,6 +1,4 @@
-// Todo: 待添加多账号签到
-// ToDo: 种菜赚金币
-// Warn: 睡觉仅在20点和12点触发,获取奖励在8点和14触发
+// 赞赏:趣头条邀请码`A1040276307`,农妇山泉 -> 有点咸
 const cookieName = '趣头条'
 const signKey = 'senku_signKey_qtt'
 const signXTKKey = 'senku_signXTK_qtt'
@@ -11,18 +9,22 @@ const signVal = senku.getdata(signKey)
 const signXTKVal = senku.getdata(signXTKKey)
 const readVal = senku.getdata(readKey)
 const navCoinVal = senku.getdata(navCoinKey)
-const signurlVal = 'https://api.1sapp.com/sign/sign?version=30967000&xhi=200' + signVal
-const adUrl = 'https://api.1sapp.com/sign/adDone?version=30967000&xhi=200' + signVal
-const getinfoUrlVal = 'https://api.1sapp.com/sign/info?version=30967000&xhi=200' + signVal
-const hourUrlVal = 'https://api.1sapp.com/mission/intPointReward?version=30967000&xhi=200' + signVal
-const coinUrlVal = 'https://api.1sapp.com/app/ioscoin/getInfo?version=30967000&xhi=200' + signVal
-const readReawardVal = 'https://api.1sapp.com/app/ioscoin/readReward?version=30967000&xhi=200&type=content_config' + signVal
-const sleepUrlVal = 'https://mvp-sleeper.qutoutiao.net/v1/sleep/update?version=30967000&xhi=200&status=1' + signVal
-const sleepRewardVal = 'https://mvp-sleeper.qutoutiao.net/v1/reward?version=30967000&xhi=200status=1&which=2' + signVal
-const luckyUrlVal = 'https://qtt-turntable.qutoutiao.net/press_trigger?version=30967000&xhi=200' + signVal
-const luckyRewardVal = 'https://qtt-turntable.qutoutiao.net/extra_reward?version=30967000&xhi=200' + signVal
-const signinfo = { playList: [], luckyList: [] }
-const playUrl = [adUrl + 'pos=one', adUrl + 'pos=two', adUrl + 'pos=three', adUrl + 'pos=four']
+const vsign = 'version=30967000&xhi=200' + signVal
+const signurlVal = 'https://api.1sapp.com/sign/sign?' + vsign
+const adUrl = 'https://api.1sapp.com/sign/adDone?' + vsign
+const getinfoUrlVal = 'https://api.1sapp.com/sign/info?' + vsign
+const hourUrlVal = 'https://api.1sapp.com/mission/intPointReward?' + vsign
+const coinUrlVal = 'https://api.1sapp.com/app/ioscoin/getInfo?' + vsign
+const readReawardVal = 'https://api.1sapp.com/app/ioscoin/readReward?type=content_config&' + vsign
+const sleepUrlVal = 'https://mvp-sleeper.qutoutiao.net/v1/sleep/update?status=1&' + vsign
+const sleepRewardVal = 'https://mvp-sleeper.qutoutiao.net/v1/reward?which=2&' + vsign
+const sleepBagVal = 'https://mvp-sleeper.qutoutiao.net/v1/reward?which=3&' + vsign
+const sleepStatusVal = 'https://mvp-sleeper.qutoutiao.net/v1/sleep/status?' + vsign
+const luckyUrlVal = 'https://qtt-turntable.qutoutiao.net/press_trigger?' + vsign
+const luckyRewardVal = 'https://qtt-turntable.qutoutiao.net/extra_reward?' + vsign
+const raindropVal = 'https://work-for-coin.1sapp.com/raindrop/v1/click?sub_id=2&type=2&scene_id=2&' + vsign
+
+const signinfo = { playList: [], luckyList: [], rainList: [] }
 
   ; (sign = async () => {
     senku.log(`🔔 ${cookieName}`)
@@ -35,12 +37,19 @@ const playUrl = [adUrl + 'pos=one', adUrl + 'pos=two', adUrl + 'pos=three', adUr
       await getreadReward()
     }
     if (new Date().getHours() == 20 || new Date().getHours() == 12) {
+      await sleepStatus()
       await sleepReward()
       await sleep()
+      if (signinfo.sleepStatus.data.fortune_bag_can_reward) {
+        await sleepBag()
+      }
     }
     if (new Date().getHours() == 8 || new Date().getHours() == 14) {
       await sleepReward()
     }
+    await rain(0)
+    await rain(1)
+    await rain(2)
     if (new Date().getDay() == 5) {
       await luckyReward(3)
       await luckyReward(8)
@@ -60,7 +69,7 @@ const playUrl = [adUrl + 'pos=one', adUrl + 'pos=two', adUrl + 'pos=three', adUr
     senku.done()
   })().catch((e) => senku.log(`❌ ${cookieName} 签到失败: ${e}`), senku.done())
 
-
+// 睡觉
 function sleep() {
   return new Promise((resolve, reject) => {
     const url = { url: sleepUrlVal, headers: { 'Host': 'mvp-sleeper.qutoutiao.net', 'X-Tk': signXTKVal } }
@@ -79,6 +88,7 @@ function sleep() {
     })
   })
 }
+// 睡觉金币
 function sleepReward() {
   return new Promise((resolve, reject) => {
     const url = { url: sleepRewardVal, headers: { 'Host': 'mvp-sleeper.qutoutiao.net', 'X-Tk': signXTKVal } }
@@ -97,6 +107,69 @@ function sleepReward() {
     })
   })
 }
+
+// 睡觉福袋
+function sleepBag() {
+  return new Promise((resolve, reject) => {
+    const url = { url: sleepBagVal, headers: { 'Host': 'mvp-sleeper.qutoutiao.net', 'X-Tk': signXTKVal } }
+    url.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+    senku.get(url, (error, response, data) => {
+      try {
+        senku.log(`❕ ${cookieName} sleepBag - response: ${JSON.stringify(response)}`)
+        signinfo.sleepBag = JSON.parse(data)
+        resolve()
+      } catch (e) {
+        senku.msg(cookieName, `睡觉福袋: 失败`, `说明: ${e}`)
+        senku.log(`❌ ${cookieName} sleepBag - 睡觉福袋: ${e}`)
+        senku.log(`❌ ${cookieName} sleepBag - response: ${JSON.stringify(response)}`)
+        resolve()
+      }
+    })
+  })
+}
+
+// 睡觉信息
+function sleepStatus() {
+  return new Promise((resolve, reject) => {
+    const url = { url: sleepStatusVal, headers: { 'Host': 'mvp-sleeper.qutoutiao.net', 'X-Tk': signXTKVal } }
+    url.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+    senku.get(url, (error, response, data) => {
+      try {
+        senku.log(`❕ ${cookieName} sleepStatus - response: ${JSON.stringify(response)}`)
+        signinfo.sleepStatus = JSON.parse(data)
+        resolve()
+      } catch (e) {
+        senku.msg(cookieName, `睡觉信息: 失败`, `说明: ${e}`)
+        senku.log(`❌ ${cookieName} sleepStatus - 睡觉信息: ${e}`)
+        senku.log(`❌ ${cookieName} sleepStatus - response: ${JSON.stringify(response)}`)
+        resolve()
+      }
+    })
+  })
+}
+
+// 雨滴金币
+function rain(seri_num) {
+  return new Promise((resolve, reject) => {
+    const raindropUrl = raindropVal + '&serial_number=' + seri_num
+    const url = { url: raindropUrl, headers: { 'Host': 'work-for-coin.1sapp.com', 'X-Tk': signXTKVal } }
+    url.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+    senku.get(url, (error, response, data) => {
+      try {
+        senku.log(`❕ ${cookieName} rain - response: ${JSON.stringify(response)}`)
+        signinfo.rainList.push(JSON.parse(data))
+        resolve()
+      } catch (e) {
+        senku.msg(cookieName, `雨滴结果: 失败`, `说明: ${e}`)
+        senku.log(`❌ ${cookieName} rain - 雨滴失败: ${e}`)
+        senku.log(`❌ ${cookieName} rain - response: ${JSON.stringify(response)}`)
+        resolve()
+      }
+    })
+  })
+}
+
+// 每日签到
 function signDay() {
   return new Promise((resolve, reject) => {
     const url = { url: signurlVal, headers: { 'Host': 'api.1sapp.com', 'X-Tk': signXTKVal } }
@@ -116,6 +189,7 @@ function signDay() {
   })
 }
 
+// 首页奖励
 function navCoin() {
   return new Promise((resolve, reject) => {
     const url = { url: navCoinVal, headers: { 'Host': 'api.1sapp.com', 'X-Tk': signXTKVal } }
@@ -222,6 +296,7 @@ function getcoininfo() {
 function signHour() {
   return new Promise((resolve, reject) => {
     const url = { url: hourUrlVal, headers: { 'Host': 'api.1sapp.com', 'X-Tk': signXTKVal } }
+    url.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
     senku.get(url, (error, response, data) => {
       try {
         senku.log(`❕ ${cookieName} signHour - response: ${JSON.stringify(response)}`)
@@ -240,6 +315,7 @@ function signHour() {
 function signLucky() {
   return new Promise((resolve, reject) => {
     const url = { url: luckyUrlVal, headers: { 'Host': 'qtt-turntable.qutoutiao.net', 'X-Tk': signXTKKey } }
+    url.headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
     senku.get(url, (error, response, data) => {
       try {
         senku.log(`❕ ${cookieName} signLucky - response: ${JSON.stringify(response)}`)
@@ -444,16 +520,31 @@ function showmsg() {
     }
   } else if (signinfo.sleep == undefined) {
     detail += ``
+    // sleepBagMsg
+  } else if (signinfo.sleepBag && signinfo.sleepBag.code == 0) {
+    const coins = signinfo.sleepBag.data.coins
+    coins == 0 ? detail += `` : detail += `【睡觉福袋】获得${signinfo.sleepBag.data.coins}💰\n`
   } else {
     detail += `【睡觉结果】失败\n`
   }
+
+  // rainDropMsg
+  if (signinfo.rainList) {
+    for (const rains of signinfo.rainList) {
+      87
+      rains.code == 0 ? detail += `【金币雨滴】成功\n` : detail += ``
+    }
+  } else {
+    detail += `【金币雨滴】失败\n`
+  }
+
   // navCoinMsg
   if (signinfo.navCoin && signinfo.navCoin.code == 0) {
     if (signinfo.coininfo.data) {
       const cur_amount = signinfo.navCoin.data.cur_amount
       const total_times = signinfo.navCoin.data.total_times
       const done_times = signinfo.navCoin.data.done_times
-      detail += `【首页奖励】${cur_amount}💰,完成${done_times}/${total_times}\n`
+      done_times == 15 ? detail += `` : detail += `【首页奖励】${cur_amount} 💰, 完成${done_times} /${total_times}\n`
     }
   } else if (signinfo.navCoin && signinfo.navCoin.code == -308) {
     detail += `【首页奖励】时间未到\n`
@@ -471,6 +562,7 @@ function showmsg() {
     detail += `【幸运转盘】获得${amount_coin},抽奖情况:${count}/${count_limit}次\n`
   } else subTitle += ``
 
+  // luckyExtraMsg
   if (signinfo.luckyList) {
     const times = [3, 8, 15, 20, 30]
     let i = 0
@@ -494,8 +586,10 @@ function showmsg() {
       const coins = signinfo.info.data.show_balance_info.coins
       const continuation = signinfo.info.data.signIn.continuation
       for (const poss of icon) {
-        const time = tTime(poss.next_time)
-        detail += `【视频广告】下次🕥${time} 可获得${poss.amount}💰\n`
+        if (poss.next_time > 0) {
+          const time = tTime(poss.next_time)
+          detail += `【视频广告】下次🕥${time} 可获得${poss.amount}💰\n`
+        }
       }
       detail += `【账户详情】共计:${coins}💰,连续签到${continuation}天`
     } else if (signinfo.playList[0].code == -126) subTitle += '广告:权限错误'
