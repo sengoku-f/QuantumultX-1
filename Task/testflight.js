@@ -11,8 +11,21 @@ const url = "https://testflight.apple.com/join/";
 /**
  * 填入要监测的appkey。从testfligt地址获取。
  * 例如"VCIvwk2g,wArXdacJ,2vnRvOTX,LzjySbQx,IdFRwmNy,qDkBu2ur,4Qt2lIm5,ZzqOu8tX,ftCqFe6D,fy7LvHVA,QKqitFwc"
+ * VCIvwk2g[Quantumult X]
+ * wArXdacJ,2vnRvOTX[Thor]
+ * LzjySbQx[Anubis]
+ * IdFRwmNy[Kitsunebi]
+ * qDkBu2ur[Pythonista 3]
+ * 4Qt2lIm5[HTTP Catcher]
+ * ZzqOu8tX[Working Copy - Git client]
+ * ftCqFe6D[Thor 体验版]
+ * fy7LvHVA[LastPass]
+ * QKqitFwc[1.1.1.1: Faster Internet]
+ * 4nss4sdk[shu]
+ * nY8mCbA3[Picsew]
+ * LtgPLzrQ[OneDrive]
 */
-const appkey = "VCIvwk2g,1SyedSId";
+const appkey = "VCIvwk2g,wArXdacJ,2vnRvOTX,LzjySbQx,IdFRwmNy,qDkBu2ur,4Qt2lIm5,ZzqOu8tX,ftCqFe6D,fy7LvHVA,QKqitFwc,1SyedSId,nY8mCbA3,LtgPLzrQ";
 
 //是否在没有tf位置的时候仍然弹出通知，默认不弹出,防止过多无用通知。
 var isNOtify = false;
