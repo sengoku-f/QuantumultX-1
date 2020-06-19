@@ -25,7 +25,7 @@ const url = "https://testflight.apple.com/join/";
  * nY8mCbA3[Picsew]
  * LtgPLzrQ[OneDrive]
 */
-const appkey = "VCIvwk2g,wArXdacJ2vnRvOTX,LzjySbQx,IdFRwmNy,qDkBu2ur,4Qt2lIm5,ftCqFe6D,fy7LvHVA,QKqitFwc,4nss4sdk,pwdNewHJ,LtgPLzrQ";
+const appkey = "VCIvwk2g,IdFRwmNy,qDkBu2ur,4Qt2lIm5,ftCqFe6D,fy7LvHVA,QKqitFwc,4nss4sdk,pwdNewHJ,LtgPLzrQ";
 
 //是否在没有tf位置的时候仍然弹出通知，默认不弹出,防止过多无用通知。
 var isNOtify = false;
