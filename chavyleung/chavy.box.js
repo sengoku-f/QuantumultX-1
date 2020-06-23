@@ -1,4 +1,4 @@
-const $ = new Env('chavy.box.js')
+const $ = new Env('BoxJs')
 $.domain = '8.8.8.8'
 
 $.KEY_sessions = 'chavy_boxjs_sessions'
@@ -8,16 +8,18 @@ $.json = $.name
 $.html = $.name
 
 !(async () => {
-  $.log(`🔔 ${$.name}, 开始!`)
-
   const path = getPath($request.url)
   // 处理主页请求 => /home
   if (/^\/home/.test(path)) {
-    handleHome()
+    await handleHome()
+  }
+  // 处理主页请求 => /sub
+  else if (/^\/sub/.test(path)) {
+    await handleSub()
   }
   // 处理 App 请求 => /app
   else if (/^\/app/.test(path)) {
-    handleApp(path.split('/app/')[1])
+    await handleApp(path.split('/app/')[1])
   }
   // 处理 Api 请求 => /api
   else if (/^\/api/.test(path)) {
@@ -26,10 +28,9 @@ $.html = $.name
   }
 })()
   .catch((e) => {
-    $.log(`❌ ${$.name}, 失败! 原因: ${e}!`)
+    $.logErr(e)
   })
   .finally(() => {
-    $.log(`🔔 ${$.name}, 结束!`)
     if ($.isapi) {
       $.done({ body: $.json })
     } else {
@@ -49,7 +50,7 @@ function getPath(url) {
 
 function getSystemCfgs() {
   return {
-    env: $.isSurge() ? 'Surge' : $.isQuanX ? 'QuanX' : 'Loon',
+    env: $.isSurge() ? 'Surge' : $.isQuanX() ? 'QuanX' : $.isLoon() ? 'Loon' : 'Node',
     envs: [
       { id: 'Surge', icon: 'https://raw.githubusercontent.com/Orz-3/task/master/surge.png' },
       { id: 'QuanX', icon: 'https://raw.githubusercontent.com/Orz-3/task/master/quantumultx.png' },
@@ -276,37 +277,89 @@ function getSystemApps() {
       author: '@chavyleung',
       repo: 'https://github.com/chavyleung/scripts/blob/master/box/switcher/box.switcher.js',
       icons: ['https://raw.githubusercontent.com/Orz-3/mini/master/box.png', 'https://raw.githubusercontent.com/Orz-3/task/master/box.png']
+    },
+    {
+      id: 'sfexpress',
+      name: '顺丰速运',
+      keys: ['chavy_loginurl_sfexpress', 'chavy_loginheader_sfexpress'],
+      author: '@chavyleung',
+      repo: 'https://github.com/chavyleung/scripts/blob/master/sfexpress',
+      icons: ['https://raw.githubusercontent.com/Orz-3/mini/master/sfexpress.png', 'https://raw.githubusercontent.com/Orz-3/task/master/sfexpress.png']
     }
   ]
-  sysapps
-    .sort((a, b) => a.id.localeCompare(b.id))
-    .forEach((app) => {
-      app.datas = Array.isArray(app.datas) ? app.datas : []
-      app.keys.forEach((key) => {
-        app.datas.push({ key, val: $.getdata(key) })
-      })
-      Array.isArray(app.settings) &&
-        app.settings.forEach((setting) => {
-          const val = $.getdata(setting.id)
-          if (setting.type === 'boolean') {
-            setting.val = val === null ? setting.val : val === 'true'
-          } else if (setting.type === 'int') {
-            setting.val = val * 1 || setting.val
-          } else {
-            setting.val = val || setting.val
-          }
-        })
-    })
+  sysapps.sort((a, b) => a.id.localeCompare(b.id))
+  wrapapps(sysapps)
   return sysapps
 }
 
 function getUserCfgs() {
+  const defcfgs = { favapps: [], appsubs: [] }
   const userCfgsStr = $.getdata($.KEY_userCfgs)
-  return userCfgsStr ? JSON.parse(userCfgsStr) : {}
+  return userCfgsStr ? Object.assign(defcfgs, JSON.parse(userCfgsStr)) : defcfgs
+}
+
+async function getAppSubs() {
+  const usercfgs = getUserCfgs()
+  const appsubs = []
+  const subActs = []
+  for (let subIdx = 0; subIdx < usercfgs.appsubs.length; subIdx++) {
+    const sub = usercfgs.appsubs[subIdx]
+    subActs.push(
+      new Promise((resolve) => {
+        $.get({ url: sub.url }, (err, resp, data) => {
+          try {
+            const respsub = JSON.parse(data)
+            if (Array.isArray(respsub.apps)) {
+              respsub._raw = sub
+              wrapapps(respsub.apps)
+              appsubs.push(respsub)
+            }
+          } catch (e) {
+            $.logErr(e, resp)
+            sub.isErr = true
+            sub.apps = []
+            sub._raw = JSON.parse(JSON.stringify(sub))
+            appsubs.push(sub)
+          } finally {
+            resolve()
+          }
+        })
+      })
+    )
+  }
+  await Promise.all(subActs)
+  return appsubs
 }
 
 function getUserApps() {
   return []
+}
+
+function wrapapps(apps) {
+  apps.forEach((app) => {
+    // 获取持久化数据
+    app.datas = Array.isArray(app.datas) ? app.datas : []
+    app.keys.forEach((key) => {
+      app.datas.push({ key, val: $.getdata(key) })
+    })
+    Array.isArray(app.settings) &&
+      app.settings.forEach((setting) => {
+        const val = $.getdata(setting.id)
+        if (setting.type === 'boolean') {
+          setting.val = val === null ? setting.val : val === 'true'
+        } else if (setting.type === 'int') {
+          setting.val = val * 1 || setting.val
+        } else {
+          setting.val = val || setting.val
+        }
+      })
+    // 判断是否收藏应用
+    const usercfgs = getUserCfgs()
+    const favapps = usercfgs && usercfgs.favapps
+    if (favapps) {
+      app.isFav = favapps.findIndex((appId) => app.id === appId) > -1 ? true : false
+    }
+  })
 }
 
 function getSessions() {
@@ -335,32 +388,26 @@ function handleApi() {
   if (data.cmd === 'saveSession') {
     const session = data.val
     const sessions = getSessions()
-    const isExistsApp = getSystemApps().find((app) => app.id === session.appId)
-    if (isExistsApp) {
-      sessions.push(session)
-      const savesuc = $.setdata(JSON.stringify(sessions), $.KEY_sessions)
-      $.subt = `保存会话: ${savesuc ? '成功' : '失败'} (${session.appName})`
-      $.desc = []
-      $.desc.push(`会话名称: ${session.name}`, `应用名称: ${session.appName}`, `会话编号: ${session.id}`, `应用编号: ${session.appId}`, `数据: ${JSON.stringify(session)}`)
-      $.msg($.name, $.subt, $.desc.join('\n'))
-    }
+    sessions.push(session)
+    const savesuc = $.setdata(JSON.stringify(sessions), $.KEY_sessions)
+    $.subt = `保存会话: ${savesuc ? '成功' : '失败'} (${session.appName})`
+    $.desc = []
+    $.desc.push(`会话名称: ${session.name}`, `应用名称: ${session.appName}`, `会话编号: ${session.id}`, `应用编号: ${session.appId}`, `数据: ${JSON.stringify(session)}`)
+    $.msg($.name, $.subt, $.desc.join('\n'))
   }
   // 保存当前会话
   else if (data.cmd === 'saveCurAppSession') {
     const app = data.val
-    const isExistsApp = getSystemApps().find((_app) => _app.id === app.id)
-    if (isExistsApp) {
-      let isAllSaveSuc = true
-      app.datas.forEach((data) => {
-        const oldval = $.getdata(data.key)
-        const newval = data.val
-        const savesuc = $.setdata(`${newval}`, data.key)
-        isAllSaveSuc = !savesuc ? false : isAllSaveSuc
-        $.log('', `❕ ${app.name}, 保存设置: ${data.key} ${savesuc ? '成功' : '失败'}!`, `旧值: ${oldval}`, `新值: ${newval}`)
-      })
-      $.subt = `保存会话: ${isAllSaveSuc ? '成功' : '失败'} (${app.name})`
-      $.msg($.name, $.subt, '')
-    }
+    let isAllSaveSuc = true
+    app.datas.forEach((data) => {
+      const oldval = $.getdata(data.key)
+      const newval = data.val
+      const savesuc = $.setdata(`${newval}`, data.key)
+      isAllSaveSuc = !savesuc ? false : isAllSaveSuc
+      $.log('', `❕ ${app.name}, 保存设置: ${data.key} ${savesuc ? '成功' : '失败'}!`, `旧值: ${oldval}`, `新值: ${newval}`)
+    })
+    $.subt = `保存会话: ${isAllSaveSuc ? '成功' : '失败'} (${app.name})`
+    $.msg($.name, $.subt, '')
   }
   // 保存设置
   else if (data.cmd === 'saveSettings') {
@@ -415,70 +462,95 @@ function handleApi() {
     const usercfgs = data.val
     $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs)
   }
+  // 添加应用订阅
+  else if (data.cmd === 'addAppSub') {
+    const sub = data.val
+    const usercfgs = getUserCfgs()
+    usercfgs.appsubs.push(sub)
+    $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs)
+  }
+  // 删除应用订阅
+  else if (data.cmd === 'delAppSub') {
+    const subId = data.val
+    const usercfgs = getUserCfgs()
+    const subIdx = usercfgs.appsubs.findIndex((s) => s.id === subId)
+    if (usercfgs.appsubs.splice(subIdx, 1) !== -1) {
+      const delsuc = $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs) ? '成功' : '失败'
+      $.subt = `删除订阅: ${delsuc ? '成功' : '失败'}`
+      $.msg($.name, $.subt, '')
+    }
+  }
 }
 
-function getBoxData() {
+async function getBoxData() {
   return {
     sessions: getSessions(),
     sysapps: getSystemApps(),
     userapps: getUserApps(),
+    appsubs: await getAppSubs(),
     syscfgs: getSystemCfgs(),
     usercfgs: getUserCfgs(),
     colors: getSystemThemes()
   }
 }
 
-function handleApp(appId) {
-  const box = getBoxData()
-  const curapp = appId ? box.sysapps.find((app) => app.id === appId) : null
-  $.html = printHtml(JSON.stringify(box), JSON.stringify(curapp))
-  if (box.usercfgs.isDebugFormat) {
-    console.log(printHtml(`'\${data}'`, `'\${curapp}'`))
-  } else if (box.usercfgs.isDebugData) {
-    console.log($.html)
-  }
-}
-
-function handleHome() {
-  const box = getBoxData()
+async function handleHome() {
+  const box = await getBoxData()
   $.html = printHtml(JSON.stringify(box))
   if (box.usercfgs.isDebugFormat) {
-    console.log(printHtml(`'\${data}'`, `'\${curapp}'`))
+    console.log(printHtml(`'\${data}'`, `'\${curapp}'`, `\${curview}`))
   } else if (box.usercfgs.isDebugData) {
     console.log($.html)
   }
 }
 
-function printHtml(data, curapp = null) {
+async function handleApp(appId) {
+  const box = await getBoxData()
+  const apps = []
+  const cursysapp = box.sysapps.find((app) => app.id === appId)
+  if (cursysapp) {
+    apps.push(cursysapp)
+  }
+  box.appsubs.filter((sub) => sub.enable !== false).forEach((sub) => apps.push(...sub.apps))
+  const curapp = apps.find((app) => app.id === appId)
+  $.html = printHtml(JSON.stringify(box), JSON.stringify(curapp), 'appsession')
+  if (box.usercfgs.isDebugFormat) {
+    console.log(printHtml(`'\${data}'`, `'\${curapp}'`, `\${curview}`))
+  } else if (box.usercfgs.isDebugData) {
+    console.log($.html)
+  }
+}
+
+async function handleSub() {
+  const box = await getBoxData()
+  $.html = printHtml(JSON.stringify(box), null, 'sub')
+  if (box.usercfgs.isDebugFormat) {
+    console.log(printHtml(`'\${data}'`, `'\${curapp}'`, `\${curview}`))
+  } else if (box.usercfgs.isDebugData) {
+    console.log($.html)
+  }
+}
+
+function printHtml(data, curapp = null, curview = 'app') {
   return `
   <!DOCTYPE html>
   <html lang="zh-CN">
     <head>
       <title>BoxJs</title>
       <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       <link rel="Bookmark" href="https://raw.githubusercontent.com/chavyleung/scripts/master/BOXJS.png" />
       <link rel="shortcut icon" href="https://raw.githubusercontent.com/chavyleung/scripts/master/BOXJS.png" />
       <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/chavyleung/scripts/master/BOXJS.png" />
       <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet" />
       <link href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css" rel="stylesheet" />
       <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet" />
-      <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     </head>
     <body>
       <div id="app">
-        <v-app>
+        <v-app v-scroll="onScroll">
           <v-app-bar :color="ui.appbar.color" app dense>
-            <v-menu bottom left v-if="['app', 'home', 'log', 'data'].includes(ui.curview) && box.syscfgs.env === ''">
-              <template v-slot:activator="{ on }">
-                <v-btn icon v-on="on"><v-icon>mdi-palette</v-icon></v-btn>
-              </template>
-              <v-list>
-                <v-list-item v-for="(color, colorIdx) in box.colors" :key="color.id" @click="ui.appbar.color=color.id">
-                  <v-list-item-title>22{{ color.name }}</v-list-item-title>
-                </v-list-item>
-              </v-list>
-            </v-menu>
-            <v-menu bottom left v-else-if="['app', 'home', 'log', 'data'].includes(ui.curview) && box.syscfgs.env !== ''">
+            <v-menu bottom left v-if="['app', 'home', 'log', 'sub'].includes(ui.curview) && box.syscfgs.env !== ''">
               <template v-slot:activator="{ on }">
                 <v-btn icon v-on="on">
                   <v-avatar size="26">
@@ -486,7 +558,7 @@ function printHtml(data, curapp = null) {
                   </v-avatar>
                 </v-btn>
               </template>
-              <v-list>
+              <v-list dense>
                 <v-list-item v-for="(env, envIdx) in box.syscfgs.envs" :key="env.id" @click="box.syscfgs.env=env.id">
                   <v-list-item-avatar size="24"><v-img :src="env.icon"></v-img></v-list-item-avatar>
                   <v-list-item-title>{{ env.id }}</v-list-item-title>
@@ -555,6 +627,11 @@ function printHtml(data, curapp = null) {
               </v-list-item>
               <v-list-item>
                 <v-list-item-content>
+                  <v-switch label="隐藏底部导航" v-model="box.usercfgs.isHideNavi" @change="onUserCfgsChange"></v-switch>
+                </v-list-item-content>
+              </v-list-item>
+              <v-list-item>
+                <v-list-item-content>
                   <v-switch label="调试模式 (数据)" v-model="box.usercfgs.isDebugData" @change="onUserCfgsChange"></v-switch>
                 </v-list-item-content>
               </v-list-item>
@@ -565,9 +642,60 @@ function printHtml(data, curapp = null) {
               </v-list-item>
             </v-list>
           </v-navigation-drawer>
-          <v-content>
+          <v-main :class="box.usercfgs.isHideNavi ? 'mb-0' : 'mb-14'">
             <v-container fluid v-if="ui.curview === 'app'">
-              <v-card class="mx-auto" tile>
+              <v-card class="mx-auto" v-if="favapps.length > 0">
+                <v-list nav dense>
+                  <v-subheader inset>收藏应用 ({{ favapps.length }})</v-subheader>
+                  <v-list-item three-line dense v-for="(app, appIdx) in favapps" :key="app.id" @click="goAppSessionView(app)">
+                    <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
+                    <v-list-item-content>
+                      <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
+                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
+                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
+                    </v-list-item-content>
+                    <v-list-item-action>
+                      <v-menu bottom left>
+                        <template v-slot:activator="{ on }">
+                          <v-btn icon v-on="on"><v-icon>mdi-dots-vertical</v-icon></v-btn>
+                        </template>
+                        <v-list dense>
+                          <v-list-item v-if="appIdx > 0" @click="onMoveFav(appIdx, -1)">
+                            <v-list-item-title>上移</v-list-item-title>
+                          </v-list-item>
+                          <v-list-item v-if="appIdx + 1 < favapps.length" @click="onMoveFav(appIdx, 1)">
+                            <v-list-item-title>下移</v-list-item-title>
+                          </v-list-item>
+                          <v-divider v-if="favapps.length > 1"></v-divider>
+                          <v-list-item @click="onFav(app)">
+                            <v-list-item-title>取消收藏</v-list-item-title>
+                          </v-list-item>
+                        </v-list>
+                      </v-menu>
+                    </v-list-item-action>
+                  </v-list-item>
+                </v-list>
+              </v-card>
+              <v-card class="mx-auto mt-4" v-for="(sub, subIdx) in appsubs.filter((sub) => sub.isErr !== true)" :key="sub.id">
+                <v-list nav dense>
+                  <v-subheader inset>
+                    {{ sub.name ? sub.name : '匿名订阅' }} ({{ sub.apps.length }})
+                  </v-subheader>
+                  <v-list-item three-line dense v-for="(app, appIdx) in sub.apps" :key="app.id" @click="goAppSessionView(app)">
+                    <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
+                    <v-list-item-content>
+                      <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
+                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
+                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
+                    </v-list-item-content>
+                    <v-list-item-action>
+                      <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)"><v-icon color="yellow darken-2">mdi-star</v-icon></v-btn>
+                      <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
+                    </v-list-item-action>
+                  </v-list-item>
+                </v-list>
+              </v-card>
+              <v-card class="mx-auto mt-4">
                 <v-list nav dense>
                   <v-subheader inset>内置应用 ({{ box.sysapps.length }})</v-subheader>
                   <v-list-item three-line dense v-for="(app, appIdx) in box.sysapps" :key="app.id" @click="goAppSessionView(app)">
@@ -578,24 +706,8 @@ function printHtml(data, curapp = null) {
                       <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
                     </v-list-item-content>
                     <v-list-item-action>
-                      <v-btn icon> <v-icon color="grey lighten-1">mdi-chevron-right</v-icon></v-btn>
-                    </v-list-item-action>
-                  </v-list-item>
-                  <v-divider></v-divider>
-                  <v-subheader inset>
-                    <span>自建应用 ({{ box.userapps.length }})</span>
-                    <v-spacer></v-spacer>
-                    <v-btn icon> <v-icon color="green">mdi-plus-circle</v-icon></v-btn>
-                  </v-subheader>
-                  <v-list-item three-line dense v-for="(app, appIdx) in box.userapps" :key="app.id" @click="goAppSessionView(app)">
-                    <v-list-item-avatar><v-img :src="app.icon"></v-img></v-list-item-avatar>
-                    <v-list-item-content>
-                      <v-list-item-title>{{ app.name }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
-                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
-                    </v-list-item-content>
-                    <v-list-item-action>
-                      <v-btn icon> <v-icon color="grey lighten-1">mdi-chevron-right</v-icon></v-btn>
+                      <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)"><v-icon color="yellow darken-2">mdi-star</v-icon></v-btn>
+                      <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
                     </v-list-item-action>
                   </v-list-item>
                 </v-list>
@@ -629,7 +741,7 @@ function printHtml(data, curapp = null) {
                     <template v-slot:activator="{ on }">
                       <v-btn icon v-on="on"><v-icon>mdi-dots-vertical</v-icon></v-btn>
                     </template>
-                    <v-list>
+                    <v-list dense>
                       <v-list-item @click="" v-clipboard:copy="JSON.stringify(ui.curapp)" v-clipboard:success="onCopy">
                         <v-list-item-title>复制会话</v-list-item-title>
                       </v-list-item>
@@ -674,13 +786,9 @@ function printHtml(data, curapp = null) {
                   <v-btn small text color="success" @click="onUseSession(session)">应用</v-btn>
                 </v-card-actions>
               </v-card>
-              <v-card class="ma-4" v-if="ui.curappSessions.length === 0">
+              <v-card class="ma-4" v-if="!ui.curappSessions || ui.curappSessions.length === 0">
                 <v-card-text>当前脚本没有自建会话!</v-card-text>
               </v-card>
-              <v-snackbar top color="success" v-model="ui.snackbar.show" :timeout="ui.snackbar.timeout">
-                {{ ui.snackbar.text }}
-                <v-btn text @click="ui.snackbar.show = false">关闭</v-btn>
-              </v-snackbar>
               <v-dialog v-model="ui.impSessionDialog.show" scrollable>
                 <v-card>
                   <v-card-title>
@@ -703,25 +811,105 @@ function printHtml(data, curapp = null) {
                 </v-card>
               </v-dialog>
             </v-container>
-          </v-content>
-          <v-bottom-navigation :value="ui.curview" app v-if="false">
-            <v-btn value="home">
-              <span>首页</span>
-              <v-icon>mdi-home</v-icon>
-            </v-btn>
-            <v-btn value="app">
-              <span>应用</span>
-              <v-icon>mdi-application</v-icon>
-            </v-btn>
-            <v-btn value="data">
-              <span>数据</span>
-              <v-icon>mdi-database</v-icon>
-            </v-btn>
-            <v-btn value="log">
-              <span>日志</span>
-              <v-icon>mdi-calendar-text</v-icon>
-            </v-btn>
-          </v-bottom-navigation>
+            <v-container fluid v-if="ui.curview === 'sub'">
+              <v-card class="mx-auto" v-if="appsubs.length > 0">
+                <v-list nav dense>
+                  <v-subheader inset>
+                    应用订阅 ({{ appsubs.length }})
+                    <v-spacer></v-spacer>
+                    <v-btn icon @click="ui.addAppSubDialog.show = true"><v-icon color="green">mdi-plus-circle</v-icon></v-btn>
+                  </v-subheader>
+                  <v-list-item three-line dense v-for="(sub, subIdx) in appsubs" :key="sub.id" @click="">
+                    <v-list-item-avatar v-if="sub.icon"><v-img :src="sub.icon"></v-img></v-list-item-avatar>
+                    <v-list-item-avatar v-else color="grey"><v-icon dark>mdi-account</v-icon></v-list-item-avatar>
+                    <v-list-item-content>
+                      <v-list-item-title>
+                        {{ sub.name ? sub.name : '匿名订阅' }} ({{ sub.apps.length }})
+                        <v-chip v-if="sub.isErr === true" color="pink" x-small class="ml-4">格式错误</v-chip>
+                      </v-list-item-title>
+                      <v-list-item-subtitle>{{ sub.repo ? sub.repo : sub._raw.url }}</v-list-item-subtitle>
+                      <v-list-item-subtitle color="blue">{{ sub.author ? sub.author : '@anonymous' }}</v-list-item-subtitle>
+                    </v-list-item-content>
+                    <v-list-item-action>
+                      <v-menu bottom left>
+                        <template v-slot:activator="{ on }">
+                          <v-btn icon v-on="on"><v-icon>mdi-dots-vertical</v-icon></v-btn>
+                        </template>
+                        <v-list dense>
+                          <v-list-item @click="onDelAppSub(sub)" color="red">
+                            <v-list-item-title>删除</v-list-item-title>
+                          </v-list-item>
+                        </v-list>
+                      </v-menu>
+                    </v-list-item-action>
+                  </v-list-item>
+                </v-list>
+              </v-card>
+              <v-btn class="mx-auto" block v-if="appsubs.length === 0" @click="ui.addAppSubDialog.show = true">添加订阅</v-btn>
+              <v-dialog v-model="ui.addAppSubDialog.show" scrollable>
+                <v-card>
+                  <v-card-title>
+                    添加订阅
+                    <v-spacer></v-spacer>
+                    <v-btn text small class="mr-n4" color="red darken-1" @click="ui.addAppSubDialog.url = ''">清空</v-btn>
+                  </v-card-title>
+                  <v-divider></v-divider>
+                  <v-card-text>
+                    <v-textarea clearable auto-grow v-model="ui.addAppSubDialog.url" label="订阅地址 (URL)" hint="请粘贴 URL 格式的订阅地址!"></v-textarea>
+                  </v-card-text>
+                  <v-divider></v-divider>
+                  <v-card-actions>
+                    <v-btn text small @click="" v-clipboard:copy="ui.addAppSubDialog.url" v-clipboard:success="onCopy">复制</v-btn>
+                    <v-btn text small @click="onAddAppSubPaste">粘粘</v-btn>
+                    <v-spacer></v-spacer>
+                    <v-btn text small color="grey darken-1" text @click="ui.addAppSubDialog.show = false">取消</v-btn>
+                    <v-btn text small color="success darken-1" text :disabled="!/^https?:\\/\\/.*?/.test(ui.addAppSubDialog.url)" @click="onAddAppSub">添加</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+              <v-dialog v-model="ui.reloadConfirmDialog.show" persistent max-width="290">
+                <v-card>
+                  <v-card-title class="headline">{{ ui.reloadConfirmDialog.title }}</v-card-title>
+                  <v-card-text>{{ ui.reloadConfirmDialog.message }}</v-card-text>
+                  <v-card-actions>
+                    <v-spacer></v-spacer>
+                    <v-btn color="grey darken-1" text @click="ui.reloadConfirmDialog.show = false">稍候</v-btn>
+                    <v-btn color="green darken-1" text @click="onReload">马上刷新</v-btn>
+                  </v-card-actions>
+                </v-card>
+              </v-dialog>
+            </v-container>
+            <v-snackbar top color="success" v-model="ui.snackbar.show" :timeout="ui.snackbar.timeout">
+              {{ ui.snackbar.text }}
+              <template v-slot:action>
+                <v-btn text @click="ui.snackbar.show = false">关闭</v-btn>
+              </template>
+            </v-snackbar>
+          </v-main>
+          <v-expand-transition>
+            <v-bottom-navigation v-model="ui.curview" app v-show="ui.navi.show && !box.usercfgs.isHideNavi">
+              <v-btn value="home">
+                <span>首页</span>
+                <v-icon>mdi-home</v-icon>
+              </v-btn>
+              <v-btn v-if="ui.curview !== 'appsession'" value="app">
+                <span>应用</span>
+                <v-icon>mdi-application</v-icon>
+              </v-btn>
+              <v-btn v-if="ui.curview === 'appsession'" value="appsession">
+                <span>应用</span>
+                <v-icon>mdi-application</v-icon>
+              </v-btn>
+              <v-btn value="sub">
+                <span>订阅</span>
+                <v-icon>mdi-database</v-icon>
+              </v-btn>
+              <v-btn value="log">
+                <span>日志</span>
+                <v-icon>mdi-calendar-text</v-icon>
+              </v-btn>
+            </v-bottom-navigation>
+          </v-expand-transition>
         </v-app>
       </div>
       <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
@@ -737,15 +925,19 @@ function printHtml(data, curapp = null) {
           data() {
             return {
               ui: {
+                scrollY: 0,
                 bfview: 'app',
-                curview: 'app',
+                curview: '${curview}',
                 curapp: ${curapp},
                 curappTabs: { curtab: 'sessions' },
                 curappSessions: null,
+                reloadConfirmDialog: { show: false, title: '操作成功', message: '是否马上刷新页面?' },
                 impSessionDialog: { show: false, impval: '' },
+                addAppSubDialog: { show: false, url: '' },
                 snackbar: { show: false, text: '已复制!', timeout: 2000 },
                 appbar: { color: '' },
                 box: { show: false },
+                navi: { show: false },
                 drawer: { show: false }
               },
               box: ${data}
@@ -770,6 +962,26 @@ function printHtml(data, curapp = null) {
                 })
               })
               return dat
+            },
+            favapps: function () {
+              const favapps = []
+              if (this.box.usercfgs.favapps) {
+                this.box.usercfgs.favapps.forEach((favappId) => {
+                  const apps = []
+                  apps.push(...this.box.sysapps)
+                  this.box.appsubs.forEach((sub) => {
+                    apps.push(...sub.apps)
+                  })
+                  const app = apps.find((app) => app.id === favappId)
+                  if (app) {
+                    favapps.push(app)
+                  }
+                })
+              }
+              return favapps
+            },
+            appsubs: function () {
+              return this.box.appsubs
             }
           },
           watch: {
@@ -782,6 +994,13 @@ function printHtml(data, curapp = null) {
                   var state = { title: 'BoxJs' }
                   document.title = state.title
                   history.pushState(state, '', '/home')
+                  this.$vuetify.goTo(this.ui.scrollY, { duration: 0, offset: 0 })
+                } else if (newval === 'sub') {
+                  this.ui.curapp = null
+                  this.ui.curappSessions = null
+                  var state = { title: 'BoxJs' }
+                  document.title = state.title
+                  history.pushState(state, '', '/sub')
                 }
               }
             }
@@ -790,22 +1009,41 @@ function printHtml(data, curapp = null) {
             onLink(link) {
               window.open(link)
             },
-            onShare() {
-              const KEY_sessions = 'chavy_boxjs_sessions'
-              const KEY_userCfgs = 'chavy_boxjs_userCfgs'
-              const data = {}
-              data[KEY_sessions] = this.box.sessions
-              data[KEY_userCfgs] = this.box.usercfgs
-              this.box.sessions.forEach((session, sessionIdx) => {
-                session.datas.forEach((_data, dataIdx) => (data[_data.key] = _data.val))
-              })
-              this.$copyText(JSON.stringify(data))
+            onScroll(e) {
+              if (this.ui.curview === 'app') {
+                this.ui.scrollY = e.currentTarget.scrollY + 48
+              }
+            },
+            onMoveFav(favIdx, moveCnt) {
+              const fromIdx = favIdx
+              const toIdx = favIdx + moveCnt
+              this.box.usercfgs.favapps.splice(fromIdx, 1, ...this.box.usercfgs.favapps.splice(toIdx, 1, this.box.usercfgs.favapps[fromIdx]))
+              this.onUserCfgsChange()
+            },
+            onFav(app) {
+              const appIdx = this.box.sysapps.findIndex((appId) => appId === app.id)
+              app.isFav = !app.isFav
+              Vue.set(this.box.sysapps, appIdx, this.box.sysapps[appIdx])
+              const usercfgs = this.box.usercfgs ? this.box.usercfgs : { favapps: [] }
+              usercfgs.favapps = usercfgs.favapps ? usercfgs.favapps : []
+              const idx = usercfgs.favapps.findIndex((appId) => appId === app.id)
+              if (app.isFav === true && idx === -1) {
+                usercfgs.favapps.push(app.id)
+              } else if (app.isFav === false && idx > -1) {
+                usercfgs.favapps.splice(idx, 1)
+              }
+              this.onUserCfgsChange()
+            },
+            onDelAppSub(sub) {
+              const subIdx = this.box.appsubs.findIndex((_sub) => _sub._raw.id === sub._raw.id)
+              this.box.appsubs.splice(subIdx, 1)
+              axios.post('/api', JSON.stringify({ cmd: 'delAppSub', val: sub._raw.id }))
             },
             onUserCfgsChange() {
               axios.post('/api', JSON.stringify({ cmd: 'saveUserCfgs', val: this.box.usercfgs }))
             },
             goAppSessionView(app) {
-              this.ui.bfview = this.ui.curview
+              this.ui.bfview = this.ui.curview === 'appsession' ? this.ui.bfview : this.ui.curview
               this.ui.curapp = app
               this.ui.curappSessions = this.box.sessions.filter((s) => s.appId === this.ui.curapp.id)
               this.ui.curview = 'appsession'
@@ -836,8 +1074,12 @@ function printHtml(data, curapp = null) {
             },
             onImpSessionPaste() {
               navigator.clipboard.readText().then((text) => {
-                this.ui.impSessionDialog.impval = ''
                 this.ui.impSessionDialog.impval = text
+              })
+            },
+            onAddAppSubPaste() {
+              navigator.clipboard.readText().then((text) => {
+                this.ui.addAppSubDialog.url = text
               })
             },
             onImpSession() {
@@ -866,6 +1108,19 @@ function printHtml(data, curapp = null) {
                 alert('导入失败! 原因: appId 为空?')
               }
             },
+            onAddAppSub() {
+              const sub = {
+                id: uuidv4(),
+                url: this.ui.addAppSubDialog.url,
+                enable: true
+              }
+              axios.post('/api', JSON.stringify({ cmd: 'addAppSub', val: sub }))
+              this.ui.addAppSubDialog.show = false
+              this.ui.reloadConfirmDialog.show = true
+            },
+            onReload() {
+              window.location.reload()
+            },
             onDelSession(session) {
               axios.post('/api', JSON.stringify({ cmd: 'delSession', val: session }))
               const sessionIdx = this.box.sessions.findIndex((s) => session.id === s.id)
@@ -885,11 +1140,12 @@ function printHtml(data, curapp = null) {
             if (this.ui.curapp) {
               this.goAppSessionView(this.ui.curapp)
             }
-            if (!this.box.usercfgs.isHideBoxIcon) {
-              setTimeout(() => {
-                this.ui.box.show = true
-              }, 1000)
-            }
+            setTimeout(() => {
+              this.ui.navi.show = true
+            }, 500)
+            setTimeout(() => {
+              this.ui.box.show = true
+            }, 500)
           }
         })
       </script>
@@ -904,4 +1160,4 @@ function printJson() {
 }
 
 // prettier-ignore
-function Env(s){this.name=s,this.data=null,this.logs=[],this.isSurge=(()=>"undefined"!=typeof $httpClient),this.isQuanX=(()=>"undefined"!=typeof $task),this.isNode=(()=>"undefined"!=typeof module&&!!module.exports),this.log=((...s)=>{this.logs=[...this.logs,...s],s?console.log(s.join("\n")):console.log(this.logs.join("\n"))}),this.msg=((s=this.name,t="",i="")=>{this.isSurge()&&$notification.post(s,t,i),this.isQuanX()&&$notify(s,t,i);const e=["","==============\ud83d\udce3\u7cfb\u7edf\u901a\u77e5\ud83d\udce3=============="];s&&e.push(s),t&&e.push(t),i&&e.push(i),console.log(e.join("\n"))}),this.getdata=(s=>{if(this.isSurge())return $persistentStore.read(s);if(this.isQuanX())return $prefs.valueForKey(s);if(this.isNode()){const t="box.dat";return this.fs=this.fs?this.fs:require("fs"),this.fs.existsSync(t)?(this.data=JSON.parse(this.fs.readFileSync(t)),this.data[s]):null}}),this.setdata=((s,t)=>{if(this.isSurge())return $persistentStore.write(s,t);if(this.isQuanX())return $prefs.setValueForKey(s,t);if(this.isNode()){const i="box.dat";return this.fs=this.fs?this.fs:require("fs"),!!this.fs.existsSync(i)&&(this.data=JSON.parse(this.fs.readFileSync(i)),this.data[t]=s,this.fs.writeFileSync(i,JSON.stringify(this.data)),!0)}}),this.wait=((s,t=s)=>i=>setTimeout(()=>i(),Math.floor(Math.random()*(t-s+1)+s))),this.get=((s,t)=>this.send(s,"GET",t)),this.post=((s,t)=>this.send(s,"POST",t)),this.send=((s,t,i)=>{if(this.isSurge()){const e="POST"==t?$httpClient.post:$httpClient.get;e(s,(s,t,e)=>{t&&(t.body=e,t.statusCode=t.status),i(s,t,e)})}this.isQuanX()&&(s.method=t,$task.fetch(s).then(s=>{s.status=s.statusCode,i(null,s,s.body)},s=>i(s.error,s,s))),this.isNode()&&(this.request=this.request?this.request:require("request"),s.method=t,s.gzip=!0,this.request(s,(s,t,e)=>{t&&(t.status=t.statusCode),i(null,t,e)}))}),this.done=((s={})=>this.isNode()?null:$done(s))}
+function Env(t,s){return new class{constructor(t,s){this.name=t,this.data=null,this.dataFile="box.dat",this.logs=[],this.logSeparator="\n",this.startTime=(new Date).getTime(),Object.assign(this,s),this.log("",`\ud83d\udd14${this.name}, \u5f00\u59cb!`)}isNode(){return"undefined"!=typeof module&&!!module.exports}isQuanX(){return"undefined"!=typeof $task}isSurge(){return"undefined"!=typeof $httpClient}isLoon(){return"undefined"!=typeof $loon}loaddata(){if(!this.isNode)return{};{this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const t=this.path.resolve(this.dataFile),s=this.path.resolve(process.cwd(),this.dataFile),e=this.fs.existsSync(t),i=!e&&this.fs.existsSync(s);if(!e&&!i)return{};{const i=e?t:s;try{return JSON.parse(this.fs.readFileSync(i))}catch{return{}}}}}writedata(){if(this.isNode){this.fs=this.fs?this.fs:require("fs"),this.path=this.path?this.path:require("path");const t=this.path.resolve(this.dataFile),s=this.path.resolve(process.cwd(),this.dataFile),e=this.fs.existsSync(t),i=!e&&this.fs.existsSync(s),h=JSON.stringify(this.data);e?this.fs.writeFileSync(t,h):i?this.fs.writeFileSync(s,h):this.fs.writeFileSync(t,h)}}getdata(t){return this.isSurge()||this.isLoon()?$persistentStore.read(t):this.isQuanX()?$prefs.valueForKey(t):this.isNode()?(this.data=this.loaddata(),this.data[t]):this.data&&this.data[t]||null}setdata(t,s){return this.isSurge()||this.isLoon()?$persistentStore.write(t,s):this.isQuanX()?$prefs.setValueForKey(t,s):this.isNode()?(this.data=this.loaddata(),this.data[s]=t,this.writedata(),!0):this.data&&this.data[s]||null}initGotEnv(t){this.got=this.got?this.got:require("got"),this.cktough=this.cktough?this.cktough:require("tough-cookie"),this.ckjar=this.ckjar?this.ckjar:new this.cktough.CookieJar,t&&(t.headers=t.headers?t.headers:{},void 0===t.headers.Cookie&&void 0===t.cookieJar&&(t.cookieJar=this.ckjar))}get(t,s=(()=>{})){t.headers&&(delete t.headers["Content-Type"],delete t.headers["Content-Length"]),this.isSurge()||this.isLoon()?$httpClient.get(t,(t,e,i)=>{!t&&e&&(e.body=i,e.statusCode=e.status,s(t,e,i))}):this.isQuanX()?$task.fetch(t).then(t=>{const{statusCode:e,statusCode:i,headers:h,body:o}=t;s(null,{status:e,statusCode:i,headers:h,body:o},o)},t=>s(t)):this.isNode()&&(this.initGotEnv(t),this.got(t).on("redirect",(t,s)=>{try{const e=t.headers["set-cookie"].map(this.cktough.Cookie.parse).toString();this.ckjar.setCookieSync(e,null),s.cookieJar=this.ckjar}catch(t){this.logErr(t)}}).then(t=>{const{statusCode:e,statusCode:i,headers:h,body:o}=t;s(null,{status:e,statusCode:i,headers:h,body:o},o)},t=>s(t)))}post(t,s=(()=>{})){if(t.body&&t.headers&&!t.headers["Content-Type"]&&(t.headers["Content-Type"]="application/x-www-form-urlencoded"),delete t.headers["Content-Length"],this.isSurge()||this.isLoon())$httpClient.post(t,(t,e,i)=>{!t&&e&&(e.body=i,e.statusCode=e.status,s(t,e,i))});else if(this.isQuanX())t.method="POST",$task.fetch(t).then(t=>{const{statusCode:e,statusCode:i,headers:h,body:o}=t;s(null,{status:e,statusCode:i,headers:h,body:o},o)},t=>s(t));else if(this.isNode()){this.initGotEnv(t);const{url:e,...i}=t;this.got.post(e,i).then(t=>{const{statusCode:e,statusCode:i,headers:h,body:o}=t;s(null,{status:e,statusCode:i,headers:h,body:o},o)},t=>s(t))}}msg(s=t,e="",i="",h){this.isSurge()||this.isLoon()?$notification.post(s,e,i):this.isQuanX()&&$notify(s,e,i),this.logs.push("","==============\ud83d\udce3\u7cfb\u7edf\u901a\u77e5\ud83d\udce3=============="),this.logs.push(s),e&&this.logs.push(e),i&&this.logs.push(i)}log(...t){t.length>0?this.logs=[...this.logs,...t]:console.log(this.logs.join(this.logSeparator))}logErr(t,s){const e=!this.isSurge()&&!this.isQuanX()&&!this.isLoon();e?$.log("",`\u2757\ufe0f${this.name}, \u9519\u8bef!`,t.stack):$.log("",`\u2757\ufe0f${this.name}, \u9519\u8bef!`,t.message)}wait(t){return new Promise(s=>setTimeout(s,t))}done(t=null){const s=(new Date).getTime(),e=(s-this.startTime)/1e3;this.log("",`\ud83d\udd14${this.name}, \u7ed3\u675f! \ud83d\udd5b ${e} \u79d2`),this.log(),(this.isSurge()||this.isQuanX()||this.isLoon())&&$done(t)}}(t,s)}
