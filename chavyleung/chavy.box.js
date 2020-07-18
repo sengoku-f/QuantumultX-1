@@ -1,7 +1,7 @@
 const $ = new Env('BoxJs')
 $.domain = '8.8.8.8'
 
-$.version = '0.4.1'
+$.version = '0.4.11'
 $.versionType = 'beta'
 $.KEY_sessions = 'chavy_boxjs_sessions'
 $.KEY_versions = 'chavy_boxjs_versions'
@@ -64,9 +64,9 @@ function getSystemCfgs() {
     version: $.version,
     versionType: $.versionType,
     envs: [
-      { id: 'Surge', icon: 'https://raw.githubusercontent.com/Orz-3/task/master/surge.png' },
-      { id: 'QuanX', icon: 'https://raw.githubusercontent.com/Orz-3/task/master/quantumultx.png' },
-      { id: 'Loon', icon: 'https://raw.githubusercontent.com/Orz-3/task/master/loon.png' }
+      { id: 'Surge', icons: ['https://raw.githubusercontent.com/Orz-3/mini/none/surge.png', 'https://raw.githubusercontent.com/Orz-3/task/master/surge.png'] },
+      { id: 'QuanX', icons: ['https://raw.githubusercontent.com/Orz-3/mini/none/quanX.png', 'https://raw.githubusercontent.com/Orz-3/task/master/quantumultx.png'] },
+      { id: 'Loon', icons: ['https://raw.githubusercontent.com/Orz-3/mini/none/loon.png', 'https://raw.githubusercontent.com/Orz-3/task/master/loon.png'] }
     ],
     chavy: {
       id: 'Chavy Scripts',
@@ -82,6 +82,7 @@ function getSystemCfgs() {
       id: 'BoxJs',
       show: false,
       icon: 'https://raw.githubusercontent.com/Orz-3/task/master/box.png',
+      icons: ['https://raw.githubusercontent.com/Orz-3/mini/master/box.png', 'https://raw.githubusercontent.com/Orz-3/task/master/box.png'],
       repo: 'https://github.com/chavyleung/scripts'
     }
   }
@@ -145,14 +146,6 @@ function getSystemApps() {
       author: '@NobyDa',
       repo: 'https://github.com/NobyDa/Script/blob/master/iQIYI-DailyBonus/iQIYI.js',
       icons: ['https://raw.githubusercontent.com/Orz-3/mini/master/iQIYI.png', 'https://raw.githubusercontent.com/Orz-3/task/master/iQIYI.png']
-    },
-    {
-      id: 'JD',
-      name: '京东',
-      keys: ['CookieJD', 'CookieJD2'],
-      author: '@NobyDa',
-      repo: 'https://github.com/NobyDa/Script/blob/master/JD-DailyBonus/JD_DailyBonus.js',
-      icons: ['https://raw.githubusercontent.com/Orz-3/mini/master/jd.png', 'https://raw.githubusercontent.com/Orz-3/task/master/jd.png']
     },
     {
       id: 'JD618',
@@ -259,38 +252,44 @@ function getGlobalBaks() {
   return globalBaksStr ? JSON.parse(globalBaksStr) : []
 }
 
+async function refreshAppSub(sub) {
+  const usercfgs = getUserCfgs()
+  const suburl = sub.url.replace(/[ ]|[\r\n]/g, '')
+  await new Promise((resolve) => {
+    $.get({ url: suburl }, (err, resp, data) => {
+      try {
+        const respsub = JSON.parse(data)
+        if (Array.isArray(respsub.apps)) {
+          respsub._raw = sub
+          respsub.updateTime = new Date()
+          usercfgs.appsubCaches[suburl] = respsub
+          console.log(`更新订阅, 成功! ${suburl}`)
+        }
+      } catch (e) {
+        $.logErr(e, resp)
+        sub.isErr = true
+        sub.apps = []
+        sub._raw = JSON.parse(JSON.stringify(sub))
+        sub.updateTime = new Date()
+        usercfgs.appsubCaches[suburl] = sub
+        console.log(`更新订阅, 失败! ${suburl}`)
+      } finally {
+        resolve()
+      }
+    })
+  })
+  $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs)
+}
+
 async function refreshAppSubs() {
+  $.msg($.name, '更新订阅: 开始!')
   const usercfgs = getUserCfgs()
   for (let subIdx = 0; subIdx < usercfgs.appsubs.length; subIdx++) {
-    const sub = usercfgs.appsubs[subIdx]
-    const suburl = sub.url.replace(/[ ]|[\r\n]/g, '')
-    await new Promise((resolve) => {
-      $.get({ url: suburl }, (err, resp, data) => {
-        try {
-          const respsub = JSON.parse(data)
-          if (Array.isArray(respsub.apps)) {
-            respsub._raw = sub
-            respsub.updateTime = new Date()
-            wrapapps(respsub.apps)
-            usercfgs.appsubCaches[suburl] = respsub
-            console.log(`更新订阅, 成功! ${suburl}`)
-          }
-        } catch (e) {
-          $.logErr(e, resp)
-          sub.isErr = true
-          sub.apps = []
-          sub._raw = JSON.parse(JSON.stringify(sub))
-          sub.updateTime = new Date()
-          usercfgs.appsubCaches[suburl] = sub
-          console.log(`更新订阅, 失败! ${suburl}`)
-        } finally {
-          resolve()
-        }
-      })
-    })
+    await refreshAppSub(usercfgs.appsubs[subIdx])
   }
-  $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs)
-  console.log(`全部订阅, 完成!`)
+  const endTime = new Date().getTime()
+  const costTime = (endTime - $.startTime) / 1000
+  $.msg($.name, `更新订阅: 完成! 🕛 ${costTime} 秒`)
 }
 
 function getAppSubs() {
@@ -336,6 +335,8 @@ function wrapapps(apps) {
           setting.val = val === null ? setting.val : val === 'true'
         } else if (setting.type === 'int') {
           setting.val = val * 1 || setting.val
+        } else if (setting.type === 'checkboxes') {
+          setting.val = val ? val.split(',') : null || setting.val
         } else {
           setting.val = val || setting.val
         }
@@ -377,7 +378,6 @@ async function getVersions() {
       } catch (e) {
         $.logErr(e, resp)
       } finally {
-        console.log(`resolve`)
         resolve()
       }
     })
@@ -458,10 +458,10 @@ async function handleApi() {
     if (Array.isArray(settings)) {
       settings.forEach((setting) => {
         const oldval = $.getdata(setting.id)
-        const newval = setting.val
-        const usesuc = $.setdata(`${newval}`, setting.id)
+        const newval = `${setting.val}`
+        const usesuc = $.setdata(newval, setting.id)
         $.log(`❕ ${$.name}, 保存设置: ${setting.id} ${usesuc ? '成功' : '失败'}!`, `旧值: ${oldval}`, `新值: ${newval}`)
-        $.setdata(`${newval}`, setting.id)
+        $.setdata(newval, setting.id)
       })
       $.subt = `保存设置: 成功! `
       $.msg($.name, $.subt, '')
@@ -511,10 +511,15 @@ async function handleApi() {
   }
   // 添加应用订阅
   else if (data.cmd === 'addAppSub') {
+    $.msg($.name, '添加订阅: 开始!')
     const sub = data.val
     const usercfgs = getUserCfgs()
     usercfgs.appsubs.push(sub)
     $.setdata(JSON.stringify(usercfgs), $.KEY_userCfgs)
+    await refreshAppSub(data.val)
+    const endTime = new Date().getTime()
+    const costTime = (endTime - $.startTime) / 1000
+    $.msg($.name, `添加订阅: 完成! 🕛 ${costTime} 秒`)
   }
   // 删除应用订阅
   else if (data.cmd === 'delAppSub') {
@@ -570,7 +575,7 @@ async function handleApi() {
 }
 
 async function getBoxData() {
-  return {
+  const box = {
     sessions: getSessions(),
     versions: await getVersions(),
     sysapps: getSystemApps(),
@@ -581,6 +586,11 @@ async function getBoxData() {
     globalbaks: getGlobalBaks(),
     colors: getSystemThemes()
   }
+  const apps = []
+  apps.push(...box.sysapps)
+  box.appsubs.forEach((sub) => apps.push(...sub.apps))
+  box.usercfgs.favapps = box.usercfgs.favapps.filter((favappId) => apps.find((app) => app.id === favappId))
+  return box
 }
 
 async function handleHome() {
@@ -659,13 +669,13 @@ function printHtml(data, curapp = null, curview = 'app') {
               <template v-slot:activator="{ on }">
                 <v-btn icon v-on="on">
                   <v-avatar size="26">
-                    <img :src="box.syscfgs.envs.find(e=>e.id===box.syscfgs.env).icon" alt="box.syscfgs.env" />
+                    <img :src="box.syscfgs.envs.find(e=>e.id===box.syscfgs.env).icons[box.usercfgs.isTransparentIcons ? 0 : 1]" alt="box.syscfgs.env" />
                   </v-avatar>
                 </v-btn>
               </template>
               <v-list dense>
                 <v-list-item v-for="(env, envIdx) in box.syscfgs.envs" :key="env.id" @click="box.syscfgs.env=env.id">
-                  <v-list-item-avatar size="24"><v-img :src="env.icon"></v-img></v-list-item-avatar>
+                  <v-list-item-avatar size="24"><v-img :src="env.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
                   <v-list-item-title>{{ env.id }}</v-list-item-title>
                 </v-list-item>
               </v-list>
@@ -683,7 +693,10 @@ function printHtml(data, curapp = null, curview = 'app') {
                     <v-list-item-subtitle>{{ item.author }}</v-list-item-subtitle>
                   </v-list-item-content>
                   <v-list-item-action>
-                    <v-btn icon v-if="item.isFav" @click.stop="onFav(item)"><v-icon color="yellow darken-2">mdi-star</v-icon></v-btn>
+                    <v-btn icon v-if="item.isFav" @click.stop="onFav(item)">
+                      <v-icon v-if="box.usercfgs.isTransparentIcons" color="white">mdi-star</v-icon>
+                      <v-icon v-else color="yellow darken-2">mdi-star</v-icon>
+                    </v-btn>
                     <v-btn icon v-else @click.stop="onFav(item)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
                   </v-list-item-action>
                 </v-list-item>
@@ -700,7 +713,7 @@ function printHtml(data, curapp = null, curview = 'app') {
               <template v-slot:activator>
                 <v-btn fab>
                   <v-avatar size="48">
-                    <img :src="box.syscfgs.boxjs.icon" :alt="box.syscfgs.boxjs.repo" />
+                    <img :src="box.syscfgs.boxjs.icons[box.usercfgs.isTransparentIcons ? 0 : 1]" :alt="box.syscfgs.boxjs.repo" />
                   </v-avatar>
                 </v-btn>
               </template>
@@ -734,43 +747,11 @@ function printHtml(data, curapp = null, curview = 'app') {
                 </v-list-item-content>
               </v-list-item>
               <v-divider></v-divider>
-              <v-list-item>
+              <v-list-item v-if="false">
                 <v-list-item-content>
                   <v-slider desen label="刷新等待" hide-details ticks="always" min="0" max="5" tick-size="1" v-model="box.usercfgs.refreshsecs" @change="onUserCfgsChange"></v-slider>
                 </v-list-item-content>
                 <v-list-item-action>{{ box.usercfgs.refreshsecs }} 秒</v-list-item-action>
-              </v-list-item>
-              <v-list-item>
-                <v-list-item-content>
-                  <v-switch label="修复断连" v-model="box.usercfgs.isFixVPN" @change="onUserCfgsChange"></v-switch>
-                </v-list-item-content>
-                <v-list-item-action>
-                  <v-dialog v-model="ui.fixvpnDialog" persistent max-width="290">
-                    <template v-slot:activator="{ on, attrs }">
-                      <v-btn fab small text v-on="on" v-bind="attrs">
-                        <v-icon>mdi-information-variant</v-icon>
-                      </v-btn>
-                    </template>
-                    <v-card>
-                      <v-card-title class="headline">修复 VPN 断连 (实验)</v-card-title>
-                      <v-card-text>
-                        打开会导致: 
-                        <ul>
-                          <!-- <li>无法自动检查 BoxJs 版本</li> -->
-                          <li>无法自动刷新应用订阅</li>
-                        </ul>
-                        <p class="mt-4">
-                          注意: 仍可手动刷新订阅 <br />
-                          路径: 底栏 > 订阅 > 刷新 (右上)
-                        </p>
-                      </v-card-text>
-                      <v-card-actions>
-                        <v-spacer></v-spacer>
-                        <v-btn color="green darken-1" text @click="ui.fixvpnDialog = false">朕, 知道了!</v-btn>
-                      </v-card-actions>
-                    </v-card>
-                  </v-dialog>
-                </v-list-item-action>
               </v-list-item>
               <v-list-item>
                 <v-list-item-content>
@@ -788,7 +769,7 @@ function printHtml(data, curapp = null, curview = 'app') {
                 </v-list-item-content>
                 <v-list-item-action @click="onLink(box.syscfgs.boxjs.repo)">
                   <v-btn fab small text>
-                    <v-avatar size="32"><img :src="box.syscfgs.boxjs.icon" :alt="box.syscfgs.boxjs.repo" /></v-avatar>
+                    <v-avatar size="32"><img :src="box.syscfgs.boxjs.icons[box.usercfgs.isTransparentIcons ? 0 : 1]" :alt="box.syscfgs.boxjs.repo" /></v-avatar>
                   </v-btn>
                 </v-list-item-action>
               </v-list-item>
@@ -837,74 +818,95 @@ function printHtml(data, curapp = null, curview = 'app') {
           </v-navigation-drawer>
           <v-main :class="box.usercfgs.isHideNavi ? 'mb-0 pb-16' : 'mb-14 pb-16'">
             <v-container fluid v-if="ui.curview === 'app'">
-              <v-card class="mx-auto" v-if="favapps.length > 0">
-                <v-list nav dense>
-                  <v-subheader inset>收藏应用 ({{ favapps.length }})</v-subheader>
-                  <v-list-item three-line dense v-for="(app, appIdx) in favapps" :key="app.id" @click="goAppSessionView(app)">
-                    <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
-                    <v-list-item-content>
-                      <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
-                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
-                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
-                    </v-list-item-content>
-                    <v-list-item-action>
-                      <v-menu bottom left>
-                        <template v-slot:activator="{ on }">
-                          <v-btn icon v-on="on"><v-icon>mdi-dots-vertical</v-icon></v-btn>
-                        </template>
-                        <v-list dense>
-                          <v-list-item v-if="appIdx > 0" @click="onMoveFav(appIdx, -1)">
-                            <v-list-item-title>上移</v-list-item-title>
-                          </v-list-item>
-                          <v-list-item v-if="appIdx + 1 < favapps.length" @click="onMoveFav(appIdx, 1)">
-                            <v-list-item-title>下移</v-list-item-title>
-                          </v-list-item>
-                          <v-divider v-if="favapps.length > 1"></v-divider>
-                          <v-list-item @click="onFav(app)">
-                            <v-list-item-title>取消收藏</v-list-item-title>
-                          </v-list-item>
-                        </v-list>
-                      </v-menu>
-                    </v-list-item-action>
-                  </v-list-item>
-                </v-list>
-              </v-card>
-              <v-card class="mx-auto mt-4" v-for="(sub, subIdx) in appsubs.filter((sub) => sub.isErr !== true)" :key="sub.id">
-                <v-list nav dense>
-                  <v-subheader inset>
+              <v-expansion-panels class="mx-auto" v-if="favapps.length > 0" multiple v-model="box.usercfgs.favapppanel">
+                <v-expansion-panel>
+                  <v-expansion-panel-header>
+                    收藏应用 ({{ favapps.length }})
+                  </v-expansion-panel-header>
+                  <v-expansion-panel-content>
+                    <v-list nav dense class="mx-n4">
+                      <v-list-item three-line dense v-for="(app, appIdx) in favapps" :key="app.id" @click="goAppSessionView(app)">
+                        <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
+                        <v-list-item-content>
+                          <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
+                          <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
+                          <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
+                        </v-list-item-content>
+                        <v-list-item-action>
+                          <v-menu bottom left>
+                            <template v-slot:activator="{ on }">
+                              <v-btn icon v-on="on"><v-icon>mdi-dots-vertical</v-icon></v-btn>
+                            </template>
+                            <v-list dense>
+                              <v-list-item v-if="appIdx > 0" @click="onMoveFav(appIdx, -1)">
+                                <v-list-item-title>上移</v-list-item-title>
+                              </v-list-item>
+                              <v-list-item v-if="appIdx + 1 < favapps.length" @click="onMoveFav(appIdx, 1)">
+                                <v-list-item-title>下移</v-list-item-title>
+                              </v-list-item>
+                              <v-divider v-if="favapps.length > 1"></v-divider>
+                              <v-list-item @click="onFav(app)">
+                                <v-list-item-title>取消收藏</v-list-item-title>
+                              </v-list-item>
+                            </v-list>
+                          </v-menu>
+                        </v-list-item-action>
+                      </v-list-item>
+                    </v-list>
+                  </v-expansion-panel-content>
+                </v-expansion-panel>
+              </v-expansion-panels>
+              <v-expansion-panels class="mx-auto mt-4" multiple v-model="box.usercfgs.subapppanel">
+                <v-expansion-panel v-for="(sub, subIdx) in appsubs.filter((sub) => sub.isErr !== true)" :key="sub.id">
+                  <v-expansion-panel-header>
                     {{ sub.name ? sub.name : '匿名订阅' }} ({{ sub.apps.length }})
-                  </v-subheader>
-                  <v-list-item three-line dense v-for="(app, appIdx) in sub.apps" :key="app.id" @click="goAppSessionView(app)">
-                    <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
-                    <v-list-item-content>
-                      <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
-                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
-                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
-                    </v-list-item-content>
-                    <v-list-item-action>
-                      <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)"><v-icon color="yellow darken-2">mdi-star</v-icon></v-btn>
-                      <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
-                    </v-list-item-action>
-                  </v-list-item>
-                </v-list>
-              </v-card>
-              <v-card class="mx-auto mt-4">
-                <v-list nav dense>
-                  <v-subheader inset>内置应用 ({{ box.sysapps.length }})</v-subheader>
-                  <v-list-item three-line dense v-for="(app, appIdx) in box.sysapps" :key="app.id" @click="goAppSessionView(app)">
-                    <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
-                    <v-list-item-content>
-                      <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
-                      <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
-                      <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
-                    </v-list-item-content>
-                    <v-list-item-action>
-                      <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)"><v-icon color="yellow darken-2">mdi-star</v-icon></v-btn>
-                      <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
-                    </v-list-item-action>
-                  </v-list-item>
-                </v-list>
-              </v-card>
+                  </v-expansion-panel-header>
+                  <v-expansion-panel-content>
+                    <v-list nav dense class="mx-n4">
+                      <v-list-item three-line dense v-for="(app, appIdx) in sub.apps" :key="app.id" @click="goAppSessionView(app)">
+                        <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
+                        <v-list-item-content>
+                          <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
+                          <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
+                          <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
+                        </v-list-item-content>
+                        <v-list-item-action>
+                          <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)">
+                            <v-icon v-if="box.usercfgs.isTransparentIcons" color="white">mdi-star</v-icon>
+                            <v-icon v-else color="yellow darken-2">mdi-star</v-icon>
+                          </v-btn>
+                          <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
+                        </v-list-item-action>
+                      </v-list-item>
+                    </v-list>
+                  </v-expansion-panel-content>
+                </v-expansion-panel>
+              </v-expansion-panels>
+              <v-expansion-panels class="mx-auto mt-4" v-if="box.sysapps.length > 0" multiple v-model="box.usercfgs.sysapppanel">
+                <v-expansion-panel>
+                  <v-expansion-panel-header>
+                  内置应用 ({{ box.sysapps.length }})
+                  </v-expansion-panel-header>
+                  <v-expansion-panel-content>
+                  <v-list nav dense class="mx-n4">
+                    <v-list-item three-line dense v-for="(app, appIdx) in box.sysapps" :key="app.id" @click="goAppSessionView(app)">
+                      <v-list-item-avatar><v-img :src="app.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
+                      <v-list-item-content>
+                        <v-list-item-title>{{ app.name }} ({{ app.id }})</v-list-item-title>
+                        <v-list-item-subtitle>{{ app.repo }}</v-list-item-subtitle>
+                        <v-list-item-subtitle color="blue">{{ app.author }}</v-list-item-subtitle>
+                      </v-list-item-content>
+                      <v-list-item-action>
+                        <v-btn icon v-if="app.isFav" @click.stop="onFav(app, appIdx)">
+                          <v-icon v-if="box.usercfgs.isTransparentIcons" color="white">mdi-star</v-icon>
+                          <v-icon v-else color="yellow darken-2">mdi-star</v-icon>
+                        </v-btn>
+                        <v-btn icon v-else @click.stop="onFav(app, appIdx)"><v-icon color="grey">mdi-star-outline</v-icon></v-btn>
+                      </v-list-item-action>
+                    </v-list-item>
+                  </v-list>
+                </v-expansion-panel>
+              </v-expansion-panels>
             </v-container>
             <v-container fluid v-if="ui.curview === 'appsession'">
               <v-card class="mx-auto mb-4">
@@ -914,10 +916,17 @@ function printHtml(data, curapp = null, curview = 'app') {
                   </v-subheader>
                   <v-form class="pl-4 pr-4">
                     <template v-for="(setting, settingIdx) in ui.curapp.settings">
-                    <v-slider :label="setting.name" v-model="setting.val" :hint="setting.desc" :min="setting.min" :max="setting.max" thumb-label="always" :placeholder="setting.placeholder" v-if="setting.type === 'slider'"></v-slider>
-                    <v-switch :label="setting.name" v-model="setting.val" :hint="setting.desc" :placeholder="setting.placeholder" v-else-if="setting.type === 'boolean'"></v-switch>
-                    <v-textarea :label="setting.name" v-model="setting.val" :hint="setting.desc" :auto-grow="setting.autoGrow" :placeholder="setting.placeholder" v-else-if="setting.type === 'textarea'"></v-textarea>
-                    <v-text-field :label="setting.name" v-model="setting.val" :hint="setting.desc" :placeholder="setting.placeholder" v-else="setting.type === 'text'"></v-text-field>
+                      <v-slider :label="setting.name" v-model="setting.val" :hint="setting.desc" :min="setting.min" :max="setting.max" thumb-label="always" :placeholder="setting.placeholder" v-if="setting.type === 'slider'"></v-slider>
+                      <v-switch :label="setting.name" v-model="setting.val" :hint="setting.desc" :placeholder="setting.placeholder" v-else-if="setting.type === 'boolean'"></v-switch>
+                      <v-textarea :label="setting.name" v-model="setting.val" :hint="setting.desc" :auto-grow="setting.autoGrow" :placeholder="setting.placeholder" v-else-if="setting.type === 'textarea'"></v-textarea>
+                      <v-radio-group :label="setting.name" v-model="setting.val" :hint="setting.desc" :placeholder="setting.placeholder" v-else-if="setting.type === 'radios'">
+                        <v-radio :class="itemIdx === 0 ? 'mt-2' : ''" v-for="(item, itemIdx) in setting.items" :label="item.label" :value="item.key" :key="item.key"></v-radio>
+                      </v-radio-group>
+                      <template v-else-if="setting.type === 'checkboxes'">
+                        <label>{{ setting.name }}</label>
+                        <v-checkbox class="mt-0" :hide-details="itemIdx + 1 !== setting.items.length" v-model="setting.val" :label="item.label" :value="item.key" v-for="(item, itemIdx) in setting.items" :key="item.key" multiple></v-checkbox>
+                      </template>
+                      <v-text-field :label="setting.name" v-model="setting.val" :hint="setting.desc" :placeholder="setting.placeholder" v-else="setting.type === 'text'"></v-text-field>
                     </template>
                   </v-form>
                   <v-divider></v-divider>
@@ -1222,9 +1231,6 @@ function printHtml(data, curapp = null, curview = 'app') {
                 </v-card-actions>
               </v-card>
             </v-dialog>
-            <v-overlay v-model="ui.overlay.show">
-              <v-progress-circular indeterminate size="64"></v-progress-circular>
-            </v-overlay>
           </v-main>
           <v-expand-transition>
             <v-bottom-navigation v-model="ui.curview" app v-show="ui.navi.show && !box.usercfgs.isHideNavi">
@@ -1290,13 +1296,13 @@ function printHtml(data, curapp = null, curview = 'app') {
                   <template v-slot:activator="{ on }">
                     <v-btn icon v-on="on">
                       <v-avatar size="26">
-                        <img :src="box.syscfgs.envs.find(e=>e.id===box.syscfgs.env).icon" alt="box.syscfgs.env" />
+                        <img :src="box.syscfgs.envs.find(e=>e.id===box.syscfgs.env).icons[box.usercfgs.isTransparentIcons ? 0 : 1]" alt="box.syscfgs.env" />
                       </v-avatar>
                     </v-btn>
                   </template>
                   <v-list dense>
                     <v-list-item v-for="(env, envIdx) in box.syscfgs.envs" :key="env.id" @click="box.syscfgs.env=env.id">
-                      <v-list-item-avatar size="24"><v-img :src="env.icon"></v-img></v-list-item-avatar>
+                      <v-list-item-avatar size="24"><v-img :src="env.icons[box.usercfgs.isTransparentIcons ? 0 : 1]"></v-img></v-list-item-avatar>
                       <v-list-item-title>{{ env.id }}</v-list-item-title>
                     </v-list-item>
                   </v-list>
@@ -1357,6 +1363,9 @@ function printHtml(data, curapp = null, curview = 'app') {
               </v-card>
             </v-sheet>
           </v-bottom-sheet>
+          <v-overlay v-model="ui.overlay.show" :opacity="0.7">
+            <v-progress-circular indeterminate size="64"></v-progress-circular>
+          </v-overlay>
         </v-app>
       </div>
       <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
@@ -1527,6 +1536,21 @@ function printHtml(data, curapp = null, curview = 'app') {
                   this.reload()
                 }
               }
+            },
+            'box.usercfgs.favapppanel': {
+              handler(newval, oldval) {
+                this.onUserCfgsChange()
+              }
+            },
+            'box.usercfgs.subapppanel': {
+              handler(newval, oldval) {
+                this.onUserCfgsChange()
+              }
+            },
+            'box.usercfgs.sysapppanel': {
+              handler(newval, oldval) {
+                this.onUserCfgsChange()
+              }
             }
           },
           methods: {
@@ -1586,20 +1610,27 @@ function printHtml(data, curapp = null, curview = 'app') {
             },
             onClearCurAppSessionData(app, datas, data) {
               data.val = ''
-              axios.post('/api', JSON.stringify({ cmd: 'saveCurAppSession', val: app }))
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'saveCurAppSession', val: app })).finally(() => {
+                this.onReload()
+              })
             },
             onSaveSessionTo(session) {
               const val = {
                 fromapp: this.ui.curapp,
                 toSession: session
               }
-              axios.post('/api', JSON.stringify({ cmd: 'saveSessionTo', val }))
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'saveSessionTo', val })).finally(() => {
+                this.onReload()
+              })
             },
             onModSession () {
-              axios.post('/api', JSON.stringify({ cmd: 'onModSession', val: this.ui.modSessionDialog.session }))
-              this.onReload()
+              this.ui.modSessionDialog.show = false
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'onModSession', val: this.ui.modSessionDialog.session })).finally(() => {
+                this.onReload()
+              })
             },
             onSaveSession() {
               const session = {
@@ -1616,8 +1647,10 @@ function printHtml(data, curapp = null, curview = 'app') {
               axios.post('/api', JSON.stringify({ cmd: 'saveSession', val: session }))
             },
             onSaveSettings() {
-              axios.post('/api', JSON.stringify({ cmd: 'saveSettings', val: this.ui.curapp.settings }))
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'saveSettings', val: this.ui.curapp.settings })).finally(() => {
+                this.onReload()
+              })
             },
             onImpSessionPaste() {
               navigator.clipboard.readText().then((text) => {
@@ -1635,6 +1668,7 @@ function printHtml(data, curapp = null, curview = 'app') {
               })
             },
             onImpSession() {
+              this.ui.overlay.show = true
               const impjson = this.ui.impSessionDialog.impval
               const impSession = impjson && JSON.parse(impjson)
               if (impSession && impSession.id && impSession.id === this.ui.curapp.id) {
@@ -1654,58 +1688,59 @@ function printHtml(data, curapp = null, curview = 'app') {
                 }
                 this.box.sessions.push(session)
                 this.ui.curappSessions.push(session)
-                axios.post('/api', JSON.stringify({ cmd: 'saveSession', val: session }))
                 this.ui.impSessionDialog.show = false
+                axios.post('/api', JSON.stringify({ cmd: 'saveSession', val: session })).finally(() => {
+                  this.ui.overlay.show = false
+                })
               } else {
+                this.ui.overlay.show = false
                 alert('导入失败! 原因: appId 为空?')
               }
             },
             onAddAppSub() {
+              this.ui.addAppSubDialog.show = false
+              this.ui.overlay.show = true
               const sub = {
                 id: uuidv4(),
                 url: this.ui.addAppSubDialog.url,
                 enable: true
               }
-              axios.post('/api', JSON.stringify({ cmd: 'addAppSub', val: sub }))
-              this.ui.addAppSubDialog.show = false
-              this.onReload()
+              axios.post('/api', JSON.stringify({ cmd: 'addAppSub', val: sub })).finally(() => {
+                this.onReload()
+              })
             },
             onRefreshAppSubs(){
-              if (['true', true].includes(this.box.usercfgs.isFixVPN)) {
-                axios.post('/api', JSON.stringify({ cmd: 'refreshAppSubs', val: null }))
-                this.box.usercfgs.refreshsecs = 3
-              }
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'refreshAppSubs', val: null })).finally(() => {
+                this.onReload()
+              })
             },
             reload() {
               window.location.reload()
             },
             onReload() {
-              if (!['true', true].includes(this.box.usercfgs.isFixVPN)) {
-                axios.post('/api', JSON.stringify({ cmd: 'refreshAppSubs', val: null }))
-              }
-              const refreshsecs = this.box.usercfgs.refreshsecs
-              const sec = [undefined, null, 'null', 'undefined', ''].includes(refreshsecs) ? 3 : refreshsecs * 1
-              if (sec === 0) {
-                this.reload()
-              } else {
-                this.ui.reloadConfirmDialog.show = true
-                this.ui.reloadConfirmDialog.sec = sec
-              }
+              window.location.reload()
             },
             onDelSession(session) {
-              axios.post('/api', JSON.stringify({ cmd: 'delSession', val: session }))
-              const sessionIdx = this.box.sessions.findIndex((s) => session.id === s.id)
-              if (this.box.sessions.splice(sessionIdx, 1) !== -1) {
-                this.ui.curappSessions = this.box.sessions.filter((s) => s.appId === this.ui.curapp.id)
-              }
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'delSession', val: session })).finally(() => {
+                const sessionIdx = this.box.sessions.findIndex((s) => session.id === s.id)
+                if (this.box.sessions.splice(sessionIdx, 1) !== -1) {
+                  this.ui.curappSessions = this.box.sessions.filter((s) => s.appId === this.ui.curapp.id)
+                }
+                this.ui.overlay.show = false
+              })
             },
             onUseSession(session) {
-              axios.post('/api', JSON.stringify({ cmd: 'useSession', val: session }))
-              this.ui.curapp.datas = JSON.parse(JSON.stringify(session.datas))
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'useSession', val: session })).finally(() => {
+                this.ui.curapp.datas = JSON.parse(JSON.stringify(session.datas))
+                this.onReload()
+              })
             },
             onImpGlobalBak() {
+              this.ui.impGlobalBakDialog.show = false
+              this.ui.overlay.show = true
               const env = this.box.syscfgs.env
               const version = this.box.syscfgs.version
               const versionType = this.box.syscfgs.versionType
@@ -1720,9 +1755,9 @@ function printHtml(data, curapp = null, curview = 'app') {
               }
               bakobj.tags = [env, version, versionType]
               this.box.globalbaks.push(bakobj)
-              this.ui.impGlobalBakDialog.show = false
-              axios.post('/api', JSON.stringify({ cmd: 'globalBak', val: bakobj }))
-              this.onReload()
+              axios.post('/api', JSON.stringify({ cmd: 'globalBak', val: bakobj })).finally(() => {
+                this.onReload()
+              })
             },
             onGlobalBak() {
               const env = this.box.syscfgs.env
@@ -1748,8 +1783,10 @@ function printHtml(data, curapp = null, curview = 'app') {
               axios.post('/api', JSON.stringify({ cmd: 'delGlobalBak', val: id }))
             },
             onRevertGlobalBak(id) {
-              axios.post('/api', JSON.stringify({ cmd: 'revertGlobalBak', val: id }))
-              this.onReload()
+              this.ui.overlay.show = true
+              axios.post('/api', JSON.stringify({ cmd: 'revertGlobalBak', val: id })).finally(() => {
+                this.onReload()
+              })
             },
             onCopy(e) {
               this.ui.snackbar.show = true
